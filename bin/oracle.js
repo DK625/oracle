@@ -11,10 +11,12 @@ import { runOracle, MODEL_CONFIGS, parseIntOption, renderPromptMarkdown } from '
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 
+
 const program = new Command();
 program
   .name('oracle')
   .description('One-shot GPT-5 Pro / GPT-5.1 tool for hard questions that benefit from large file context and server-side search.')
+  .version('1.0.0')
   .option('-p, --prompt <text>', 'User prompt to send to the model.')
   .option('-f, --file <paths...>', 'Paths to files or directories to append to the prompt; repeat or supply a space-separated list.', collectPaths, [])
   .option('-m, --model <model>', 'Model to target (gpt-5-pro | gpt-5.1).', validateModel, 'gpt-5-pro')
