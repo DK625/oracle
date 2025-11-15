@@ -54,7 +54,110 @@ interface StatusOptions extends OptionValues {
 }
 
 const VERSION = '1.0.0';
+const rawCliArgs = process.argv.slice(2);
+const isTty = process.stdout.isTTY;
 
+type HelpStyler = (text: string) => string;
+
+interface HelpTheme {
+  name: HelpThemeName;
+  banner: HelpStyler;
+  subtitle: HelpStyler;
+  heading: HelpStyler;
+  bullet: HelpStyler;
+  body: HelpStyler;
+  muted: HelpStyler;
+  command: HelpStyler;
+  accent: HelpStyler;
+}
+
+const HELP_THEME_NAMES = ['aurora', 'ember', 'slate'] as const;
+type HelpThemeName = (typeof HELP_THEME_NAMES)[number];
+
+const passthrough: HelpStyler = (text) => text;
+const wrapForTty = (styler: HelpStyler): HelpStyler => (text) => (isTty ? styler(text) : text);
+
+const createTheme = (name: HelpThemeName, config: Omit<HelpTheme, 'name'>): HelpTheme => ({
+  name,
+  banner: wrapForTty(config.banner),
+  subtitle: wrapForTty(config.subtitle),
+  heading: wrapForTty(config.heading),
+  bullet: wrapForTty(config.bullet),
+  body: wrapForTty(config.body),
+  muted: wrapForTty(config.muted),
+  command: wrapForTty(config.command),
+  accent: wrapForTty(config.accent),
+});
+
+const HELP_THEMES: Record<HelpThemeName, HelpTheme> = {
+  aurora: createTheme('aurora', {
+    banner: (text) => kleur.bold().cyan(text),
+    subtitle: (text) => kleur.dim(text),
+    heading: (text) => kleur.bold().magenta(text),
+    bullet: (text) => kleur.cyan(text),
+    body: passthrough,
+    muted: (text) => kleur.gray(text),
+    command: (text) => kleur.bold().white(text),
+    accent: (text) => kleur.magenta(text),
+  }),
+  ember: createTheme('ember', {
+    banner: (text) => kleur.bold().yellow(text),
+    subtitle: (text) => kleur.dim(text),
+    heading: (text) => kleur.bold().red(text),
+    bullet: (text) => kleur.yellow(text),
+    body: passthrough,
+    muted: (text) => kleur.dim(text),
+    command: (text) => kleur.bold().yellow(text),
+    accent: (text) => kleur.red(text),
+  }),
+  slate: createTheme('slate', {
+    banner: (text) => kleur.bold().blue(text),
+    subtitle: (text) => kleur.dim(text),
+    heading: (text) => kleur.bold().white(text),
+    bullet: (text) => kleur.blue(text),
+    body: passthrough,
+    muted: (text) => kleur.gray(text),
+    command: (text) => kleur.bold().blue(text),
+    accent: (text) => kleur.cyan(text),
+  }),
+};
+
+const helpThemeName = resolveHelpThemeName(rawCliArgs, process.env.ORACLE_HELP_THEME);
+const helpTheme = HELP_THEMES[helpThemeName];
+
+function resolveHelpThemeName(args: string[], envValue?: string): HelpThemeName {
+  const fromArgs = extractHelpThemeFromArgs(args);
+  if (isHelpThemeName(fromArgs)) {
+    return fromArgs;
+  }
+  const fromEnv = envValue?.toLowerCase();
+  if (isHelpThemeName(fromEnv)) {
+    return fromEnv;
+  }
+  return 'aurora';
+}
+
+function extractHelpThemeFromArgs(args: string[]): string | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    if (current === '--help-theme') {
+      const maybeTheme = args[index + 1];
+      if (maybeTheme) {
+        return maybeTheme.toLowerCase();
+      }
+    } else if (current.startsWith('--help-theme=')) {
+      return current.split('=')[1]?.toLowerCase();
+    }
+  }
+  return undefined;
+}
+
+function isHelpThemeName(value: string | undefined | null): value is HelpThemeName {
+  if (!value) {
+    return false;
+  }
+  return HELP_THEME_NAMES.includes(value as HelpThemeName);
+}
 
 const program = new Command();
 program
@@ -69,6 +172,11 @@ program
     new Option('--preview [mode]', 'Preview the request without calling the API (summary | json | full).')
       .choices(['summary', 'json', 'full'])
       .preset('summary'),
+  )
+  .addOption(
+    new Option('--help-theme <theme>', 'Choose a color palette for --help output.')
+      .choices(Array.from(HELP_THEME_NAMES))
+      .env('ORACLE_HELP_THEME'),
   )
   .addOption(new Option('--exec-session <id>').hideHelp())
   .option('--render-markdown', 'Emit the assembled markdown bundle for prompt + files and exit.', false)
@@ -124,34 +232,69 @@ statusCommand
     console.log(`Deleted ${result.deleted} ${result.deleted === 1 ? 'session' : 'sessions'} (${scope}).`);
   });
 
-const isTty = process.stdout.isTTY;
 const bold = (text: string): string => (isTty ? kleur.bold(text) : text);
 const dim = (text: string): string => (isTty ? kleur.dim(text) : text);
 
-program.addHelpText('beforeAll', () => `${bold(`Oracle CLI v${VERSION}`)} — GPT-5 Pro/GPT-5.1 for tough questions with code/file context.\n`);
-program.addHelpText(
-  'after',
-  () => `
-${bold('Tips')}
-${dim(' •')} This CLI is tuned for tough questions. Attach source files for best results, but keep total input under ~196k tokens.
-${dim(' •')} The model has no built-in knowledge of your project—start each run with a sentence or two about the architecture, key components, and why you’re asking the question if that context matters.
-${dim(' •')} Run ${bold('--files-report')} to see per-file token impact before spending money.
-${dim(' •')} Non-preview runs spawn detached sessions so requests keep running even if your terminal closes.
+program.addHelpText('beforeAll', () => renderHelpBanner(helpTheme));
+program.addHelpText('after', () => renderHelpFooter(helpTheme));
 
-${bold('Examples')}
-${bold('  oracle')} --prompt "Summarize risks" --file docs/risk.md --files-report --preview
-${dim('    Inspect tokens + files without calling the API.')}
+function renderHelpBanner(theme: HelpTheme): string {
+  const subtitle = 'GPT-5 Pro/GPT-5.1 for tough questions with code/file context.';
+  return `${theme.banner(`Oracle CLI v${VERSION}`)} ${theme.subtitle(`— ${subtitle}`)}\n`;
+}
 
-${bold('  oracle')} --prompt "Explain bug" --file src/,docs/crash.log --files-report
-${dim('    Attach both the src/ directory and docs/crash.log, launch a background session, and note the printed Session ID.')}
+function renderHelpFooter(theme: HelpTheme): string {
+  const tipLines = [
+    `${theme.bullet(' •')} Attach source files for best results, but keep total input under ~196k tokens.`,
+    `${theme.bullet(' •')} The model has no built-in knowledge of your project—open with the architecture, key components, and why you’re asking.`,
+    `${theme.bullet(' •')} Run ${theme.accent('--files-report')} to see per-file token impact before spending money.`,
+    `${theme.bullet(' •')} Non-preview runs spawn detached sessions so requests keep running even if your terminal closes.`,
+  ].join('\n');
 
-${bold('  oracle status')} --hours 72 --limit 50
-${dim('    Show sessions from the last 72h (capped at 50 entries).')}
+  const exampleEntries = [
+    {
+      command: `${program.name()} --prompt "Summarize risks" --file docs/risk.md --files-report --preview`,
+      description: 'Inspect tokens + files without calling the API.',
+    },
+    {
+      command: `${program.name()} --prompt "Explain bug" --file src/,docs/crash.log --files-report`,
+      description: 'Attach src/ plus docs/crash.log, launch a background session, and capture the Session ID.',
+    },
+    {
+      command: `${program.name()} status --hours 72 --limit 50`,
+      description: 'Show sessions from the last 72h (capped at 50 entries).',
+    },
+    {
+      command: `${program.name()} session <sessionId>`,
+      description: 'Attach to a running/completed session and stream the saved transcript.',
+    },
+  ];
 
-${bold('  oracle session')} <sessionId>
-${dim('    Attach to a running/completed session, streaming the saved transcript.')}
-`,
-);
+  const exampleLines = exampleEntries
+    .map((entry) => `${theme.command(`  ${entry.command}`)}\n${theme.muted(`    ${entry.description}`)}`)
+    .join('\n\n');
+
+  const paletteList = HELP_THEME_NAMES.map((name) =>
+    name === theme.name ? theme.command(name) : theme.accent(name),
+  ).join(theme.muted(', '));
+
+  const themeLines = [
+    `${theme.bullet(' •')} Current: ${theme.command(theme.name)}`,
+    `${theme.bullet(' •')} Try: ${paletteList}`,
+    `${theme.bullet(' •')} Switch via ${theme.accent('--help-theme <name>')} or ${theme.accent('ORACLE_HELP_THEME=<name>')}.`,
+  ].join('\n');
+
+  return `
+${theme.heading('Tips')}
+${tipLines}
+
+${theme.heading('Examples')}
+${exampleLines}
+
+${theme.heading('Color Themes')}
+${themeLines}
+`;
+}
 
 function collectPaths(value: string | string[] | undefined, previous: string[] = []): string[] {
   if (!value) {
@@ -182,8 +325,6 @@ function usesDefaultStatusFilters(cmd: Command): boolean {
   const allSource = cmd.getOptionValueSource?.('all') ?? 'default';
   return hoursSource === 'default' && limitSource === 'default' && allSource === 'default';
 }
-
-const rawArgs = process.argv.slice(2);
 
 function resolvePreviewMode(value: boolean | string | undefined): PreviewMode | undefined {
   if (typeof value === 'string' && value.length > 0) {
@@ -238,7 +379,7 @@ function buildRunOptionsFromMetadata(metadata: SessionMetadata): RunOracleOption
 async function runRootCommand(options: CliOptions): Promise<void> {
   const previewMode = resolvePreviewMode(options.preview);
 
-  if (rawArgs.length === 0) {
+  if (rawCliArgs.length === 0) {
     console.log(chalk.yellow('No prompt or subcommand supplied. See `oracle --help` for usage.'));
     program.help({ error: false });
     return;
@@ -299,7 +440,6 @@ async function runInteractiveSession(sessionMeta: SessionMetadata, runOptions: R
       headerAugmented = true;
       console.log(`${message}\n${chalk.blue(`Reattach via: oracle session ${sessionMeta.id}`)}`);
       logLine(message);
-      logLine(`Reattach via: oracle session ${sessionMeta.id}`);
       return;
     }
     console.log(message);
@@ -423,7 +563,12 @@ async function attachSession(sessionId: string): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  console.log(chalk.bold(`Session ${sessionId}`));
+  const reattachLine = buildReattachLine(metadata);
+  if (reattachLine) {
+    console.log(chalk.blue(reattachLine));
+  } else {
+    console.log(chalk.bold(`Session ${sessionId}`));
+  }
   console.log(`Created: ${metadata.createdAt}`);
   console.log(`Status: ${metadata.status}`);
   console.log(`Model: ${metadata.model}`);
@@ -464,6 +609,63 @@ async function attachSession(sessionId: string): Promise<void> {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function buildReattachLine(metadata: SessionMetadata): string | null {
+  if (!metadata.id) {
+    return null;
+  }
+  const referenceTime = metadata.startedAt ?? metadata.createdAt;
+  if (!referenceTime) {
+    return null;
+  }
+  const elapsedLabel = formatRelativeDuration(referenceTime);
+  if (!elapsedLabel) {
+    return null;
+  }
+  if (metadata.status === 'running') {
+    return `Session ${metadata.id} reattached, request started ${elapsedLabel} ago.`;
+  }
+  return null;
+}
+
+function formatRelativeDuration(referenceIso: string): string | null {
+  const timestamp = Date.parse(referenceIso);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 0) {
+    return null;
+  }
+  const seconds = Math.max(1, Math.round(diffMs / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) {
+    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) {
+    const parts = [`${hours}h`];
+    if (remainingMinutes > 0) {
+      parts.push(`${remainingMinutes}m`);
+    }
+    return parts.join(' ');
+  }
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  const parts = [`${days}d`];
+  if (remainingHours > 0) {
+    parts.push(`${remainingHours}h`);
+  }
+  if (remainingMinutes > 0 && days === 0) {
+    parts.push(`${remainingMinutes}m`);
+  }
+  return parts.join(' ');
 }
 
 program.action(async function (this: Command) {
