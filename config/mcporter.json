@@ -27,6 +27,9 @@
         "${CHROME_DEVTOOLS_URL}"
       ],
       "lifecycle": "ephemeral"
+    },
+    "iterm": {
+      "command": "/Users/steipete/Projects/iterm-mcp/build/index.js"
     }
   },
   "imports": []
