@@ -9,6 +9,7 @@ export function mapConsultToRunOptions({
   files,
   model,
   engine,
+  search,
   userConfig,
   env = process.env,
 }: {
@@ -16,10 +17,15 @@ export function mapConsultToRunOptions({
   files: string[];
   model?: string;
   engine?: EngineMode;
+  search?: boolean;
   userConfig?: UserConfig;
   env?: NodeJS.ProcessEnv;
 }): { runOptions: RunOracleOptions; resolvedEngine: EngineMode } {
-  return resolveRunOptionsFromConfig({ prompt, files, model, engine, userConfig, env });
+  const result = resolveRunOptionsFromConfig({ prompt, files, model, engine, userConfig, env });
+  if (typeof search === 'boolean') {
+    result.runOptions.search = search;
+  }
+  return result;
 }
 
 export function ensureBrowserAvailable(engine: EngineMode): string | null {

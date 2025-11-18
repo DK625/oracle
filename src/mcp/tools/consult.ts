@@ -35,6 +35,7 @@ const consultInputShape = {
   files: z.array(z.string()).default([]),
   model: z.string().optional(),
   engine: z.enum(['api', 'browser']).optional(),
+  search: z.boolean().optional(),
   slug: z.string().optional(),
 } satisfies z.ZodRawShape;
 
