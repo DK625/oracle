@@ -27,9 +27,16 @@ export function resolveRunOptionsFromConfig({
   env = process.env,
 }: ResolveRunOptionsInput): ResolvedRunOptions {
   const resolvedEngine = resolveEngineWithConfig({ engine, configEngine: userConfig?.engine, env });
+  const browserRequested = engine === 'browser' || userConfig?.engine === 'browser';
 
   const cliModelArg = normalizeModelOption(model ?? userConfig?.model) || 'gpt-5-pro';
   const resolvedModel = resolvedEngine === 'browser' ? inferModelFromLabel(cliModelArg) : resolveApiModel(cliModelArg);
+  const isGemini = resolvedModel.startsWith('gemini');
+
+  if (isGemini && browserRequested) {
+    throw new Error('Gemini is only supported via API. Use --engine api.');
+  }
+  const fixedEngine: EngineMode = isGemini ? 'api' : resolvedEngine;
 
   const promptWithSuffix =
     userConfig?.promptSuffix && userConfig.promptSuffix.trim().length > 0
@@ -54,7 +61,7 @@ export function resolveRunOptionsFromConfig({
     baseUrl,
   };
 
-  return { runOptions, resolvedEngine };
+  return { runOptions, resolvedEngine: fixedEngine };
 }
 
 function resolveEngineWithConfig({

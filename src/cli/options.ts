@@ -95,6 +95,9 @@ export function resolveApiModel(modelValue: string): ModelName {
   if (normalized in MODEL_CONFIGS) {
     return normalized as ModelName;
   }
+  if (normalized.includes('gemini')) {
+    return 'gemini-3-pro';
+  }
   throw new InvalidArgumentError(
     `Unsupported model "${modelValue}". Choose one of: ${Object.keys(MODEL_CONFIGS).join(', ')}`,
   );
@@ -107,6 +110,9 @@ export function inferModelFromLabel(modelValue: string): ModelName {
   }
   if (normalized in MODEL_CONFIGS) {
     return normalized as ModelName;
+  }
+  if (normalized.includes('gemini')) {
+    return 'gemini-3-pro';
   }
   if (normalized.includes('pro')) {
     return 'gpt-5-pro';

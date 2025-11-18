@@ -82,6 +82,26 @@ describe('resolveRunOptionsFromConfig', () => {
     });
     expect(runOptions.baseUrl).toBe('https://env.example/v2');
   });
+
+  it('forces api engine for gemini when engine is auto-detected', () => {
+    const { runOptions, resolvedEngine } = resolveRunOptionsFromConfig({
+      prompt: basePrompt,
+      model: 'gemini-3-pro-thinking',
+      env: {}, // no OPENAI_API_KEY, would normally choose browser
+    });
+    expect(resolvedEngine).toBe('api');
+    expect(runOptions.model).toBe('gemini-3-pro');
+  });
+
+  it('throws when browser engine is explicitly combined with gemini', () => {
+    expect(() =>
+      resolveRunOptionsFromConfig({
+        prompt: basePrompt,
+        model: 'gemini-3-pro-thinking',
+        engine: 'browser',
+      }),
+    ).toThrow('Gemini is only supported via API. Use --engine api.');
+  });
 });
 
 describe('estimateRequestTokens', () => {

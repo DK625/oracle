@@ -37,6 +37,7 @@ import { buildBrowserConfig, resolveBrowserModelLabel } from '../src/cli/browser
 import { performSessionRun } from '../src/cli/sessionRunner.js';
 import { attachSession, showStatus, formatCompletionSummary } from '../src/cli/sessionDisplay.js';
 import type { ShowStatusOptions } from '../src/cli/sessionDisplay.js';
+import { resolveGeminiModelId } from '../src/oracle/gemini.js';
 import { handleSessionCommand, type StatusOptions, formatSessionCleanupMessage } from '../src/cli/sessionCommand.js';
 import { isErrorLogged } from '../src/cli/errorUtils.js';
 import { handleSessionAlias, handleStatusFlag } from '../src/cli/rootAlias.js';
@@ -97,6 +98,7 @@ interface CliOptions extends OptionValues {
   azureEndpoint?: string;
   azureDeployment?: string;
   azureApiVersion?: string;
+  showModelId?: boolean;
 }
 
 type ResolvedCliOptions = Omit<CliOptions, 'model'> & { model: ModelName };
@@ -187,6 +189,7 @@ program
   .addOption(new Option('--status', 'Show stored sessions (alias for `oracle status`).').default(false).hideHelp())
   .option('--render-markdown', 'Emit the assembled markdown bundle for prompt + files and exit.', false)
   .option('--verbose-render', 'Show render/TTY diagnostics when replaying sessions.', false)
+  .option('--show-model-id', 'Print the resolved model identifier (useful for Gemini preview aliases).', false)
   .addOption(
     new Option('--search <mode>', 'Set server-side search behavior (on/off).')
       .argParser(parseSearchOption)
@@ -445,7 +448,7 @@ async function runRootCommand(options: CliOptions): Promise<void> {
   }
 
   const preferredEngine = options.engine ?? userConfig.engine;
-  const engine: EngineMode = resolveEngine({ engine: preferredEngine, browserFlag: options.browser, env: process.env });
+  let engine: EngineMode = resolveEngine({ engine: preferredEngine, browserFlag: options.browser, env: process.env });
   if (options.browser) {
     console.log(chalk.yellow('`--browser` is deprecated; use `--engine browser` instead.'));
   }
@@ -488,7 +491,17 @@ async function runRootCommand(options: CliOptions): Promise<void> {
   }
 
   const cliModelArg = normalizeModelOption(options.model) || 'gpt-5-pro';
-  const resolvedModel: ModelName = engine === 'browser' ? inferModelFromLabel(cliModelArg) : resolveApiModel(cliModelArg);
+  const resolvedModelCandidate: ModelName =
+    engine === 'browser' ? inferModelFromLabel(cliModelArg) : resolveApiModel(cliModelArg);
+  const isGemini = resolvedModelCandidate.startsWith('gemini');
+  const userForcedBrowser = options.browser || preferredEngine === 'browser';
+  if (isGemini && userForcedBrowser) {
+    throw new Error('Gemini is only supported via API. Use --engine api.');
+  }
+  if (isGemini && engine === 'browser') {
+    engine = 'api';
+  }
+  const resolvedModel: ModelName = isGemini ? resolveApiModel(cliModelArg) : resolvedModelCandidate;
   const resolvedBaseUrl = normalizeBaseUrl(options.baseUrl ?? process.env.OPENAI_BASE_URL);
   const resolvedOptions: ResolvedCliOptions = { ...options, model: resolvedModel };
   resolvedOptions.baseUrl = resolvedBaseUrl;
@@ -502,6 +515,14 @@ async function runRootCommand(options: CliOptions): Promise<void> {
     model: resolvedModel,
     engine,
   });
+
+  if (options.showModelId) {
+    let resolvedId: string = resolvedModel;
+    if (resolvedModel.startsWith('gemini')) {
+      resolvedId = resolveGeminiModelId(resolvedModel);
+    }
+    console.log(chalk.dim(`Resolved model id: ${resolvedId}`));
+  }
 
   if (await handleStatusFlag(options, { attachSession, showStatus })) {
     return;
