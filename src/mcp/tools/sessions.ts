@@ -1,13 +1,6 @@
-import fs from 'node:fs/promises';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import {
-  filterSessionsByRange,
-  getSessionPaths,
-  listSessionsMetadata,
-  readSessionLog,
-  readSessionMetadata,
-} from '../../sessionManager.js';
+import { sessionStore } from '../../sessionStore.js';
 import { sessionsInputSchema } from '../types.js';
 
 const sessionsInputShape = {
@@ -57,7 +50,7 @@ export function registerSessionsTool(server: McpServer): void {
 
       if (id) {
         if (!detail) {
-          const metadata = await readSessionMetadata(id);
+          const metadata = await sessionStore.readSession(id);
           if (!metadata) {
             throw new Error(`Session "${id}" not found.`);
           }
@@ -78,28 +71,20 @@ export function registerSessionsTool(server: McpServer): void {
             },
           };
         }
-        const metadata = await readSessionMetadata(id);
+        const metadata = await sessionStore.readSession(id);
         if (!metadata) {
           throw new Error(`Session "${id}" not found.`);
         }
-        const log = await readSessionLog(id);
-        let request: Record<string, unknown> | undefined;
-        try {
-          const paths = await getSessionPaths(id);
-          const raw = await fs.readFile(paths.request, 'utf8');
-          // Old sessions may lack a request payload; treat it as best-effort metadata.
-          request = JSON.parse(raw) as Record<string, unknown>;
-        } catch {
-          request = undefined;
-        }
+        const log = await sessionStore.readLog(id);
+        const request = (await sessionStore.readRequest(id)) ?? undefined;
         return {
           content: textContent(log),
           structuredContent: { session: { metadata, log, request } },
         };
       }
 
-      const metas = await listSessionsMetadata();
-      const { entries, truncated, total } = filterSessionsByRange(metas, { hours, includeAll, limit });
+      const metas = await sessionStore.listSessions();
+      const { entries, truncated, total } = sessionStore.filterSessions(metas, { hours, includeAll, limit });
       return {
         content: [
           {

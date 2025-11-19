@@ -6,6 +6,11 @@ const performSessionRunMock = vi.fn();
 const ensureSessionStorageMock = vi.fn();
 const initializeSessionMock = vi.fn();
 const createSessionLogWriterMock = vi.fn();
+const readSessionMock = vi.fn();
+const readRequestMock = vi.fn();
+const readLogMock = vi.fn();
+const listSessionsMock = vi.fn().mockResolvedValue([]);
+const getPathsMock = vi.fn();
 
 vi.mock('inquirer', () => ({
   default: { prompt: promptMock },
@@ -16,15 +21,18 @@ vi.mock('../../../src/cli/sessionRunner.ts', () => ({
   performSessionRun: performSessionRunMock,
 }));
 
-vi.mock('../../../src/sessionManager.ts', () => ({
-  ensureSessionStorage: ensureSessionStorageMock,
-  initializeSession: initializeSessionMock,
-  createSessionLogWriter: createSessionLogWriterMock,
-  readSessionMetadata: vi.fn(),
-  readSessionRequest: vi.fn(),
-  readSessionLog: vi.fn(),
-  listSessionsMetadata: vi.fn().mockResolvedValue([]),
-  getSessionPaths: vi.fn(),
+vi.mock('../../../src/sessionStore.ts', () => ({
+  sessionStore: {
+    ensureStorage: ensureSessionStorageMock,
+    createSession: initializeSessionMock,
+    createLogWriter: createSessionLogWriterMock,
+    readSession: readSessionMock,
+    readRequest: readRequestMock,
+    readLog: readLogMock,
+    listSessions: listSessionsMock,
+    getPaths: getPathsMock,
+    sessionsDir: vi.fn().mockReturnValue('/tmp/.oracle/sessions'),
+  },
 }));
 
 // Import after mocks are registered
@@ -35,12 +43,18 @@ const originalCI = process.env.CI;
 describe('askOracleFlow', () => {
   beforeEach(() => {
     // Make notification defaults deterministic (CI disables by default).
-    process.env.CI = '';
-    promptMock.mockReset();
-    performSessionRunMock.mockReset();
-    ensureSessionStorageMock.mockReset();
-    initializeSessionMock.mockReset();
-    createSessionLogWriterMock.mockReset();
+  process.env.CI = '';
+  promptMock.mockReset();
+  performSessionRunMock.mockReset();
+  ensureSessionStorageMock.mockReset();
+  initializeSessionMock.mockReset();
+  createSessionLogWriterMock.mockReset();
+  readSessionMock.mockReset();
+  readRequestMock.mockReset();
+  readLogMock.mockReset();
+  listSessionsMock.mockReset();
+  getPathsMock.mockReset();
+  listSessionsMock.mockResolvedValue([]);
     createSessionLogWriterMock.mockReturnValue({
       logLine: vi.fn(),
       writeChunk: vi.fn(),

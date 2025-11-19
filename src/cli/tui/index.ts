@@ -6,21 +6,10 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import { MODEL_CONFIGS, type ModelName, type RunOracleOptions } from '../../oracle.js';
 import { renderMarkdownAnsi } from '../markdownRenderer.js';
-import {
-  createSessionLogWriter,
-  getSessionPaths,
-  initializeSession,
-  listSessionsMetadata,
-  readSessionLog,
-  readSessionMetadata,
-  readSessionRequest,
-  type SessionMetadata,
-  type SessionMode,
-  ensureSessionStorage,
-} from '../../sessionManager.js';
+import type { SessionMetadata, SessionMode, BrowserSessionConfig } from '../../sessionManager.js';
+import { sessionStore } from '../../sessionStore.js';
 import { performSessionRun } from '../sessionRunner.js';
 import { MAX_RENDER_BYTES, trimBeforeFirstAnswer } from '../sessionDisplay.js';
-import type { BrowserSessionConfig } from '../../sessionManager.js';
 import { buildBrowserConfig, resolveBrowserModelLabel } from '../browserConfig.js';
 import { resolveNotificationSettings } from '../notifier.js';
 import { loadUserConfig, type UserConfig } from '../../config.js';
@@ -139,7 +128,7 @@ async function fetchSessionBuckets(): Promise<{
   hasMoreOlder: boolean;
   olderTotal: number;
 }> {
-  const all = await listSessionsMetadata();
+  const all = await sessionStore.listSessions();
   const cutoff = Date.now() - RECENT_WINDOW_HOURS * 60 * 60 * 1000;
   const recent = all.filter((meta) => new Date(meta.createdAt).getTime() >= cutoff).slice(0, PAGE_SIZE);
   const olderAll = all.filter((meta) => new Date(meta.createdAt).getTime() < cutoff);
@@ -275,7 +264,7 @@ async function showSessionDetail(sessionId: string): Promise<void> {
 }
 
 async function renderSessionLog(sessionId: string): Promise<void> {
-  const raw = await readSessionLog(sessionId);
+  const raw = await sessionStore.readLog(sessionId);
   const text = trimBeforeFirstAnswer(raw);
   const size = Buffer.byteLength(text, 'utf8');
   if (size > MAX_RENDER_BYTES) {
@@ -294,7 +283,7 @@ async function renderSessionLog(sessionId: string): Promise<void> {
 
 async function getSessionLogPath(sessionId: string): Promise<string | null> {
   try {
-    const paths = await getSessionPaths(sessionId);
+    const paths = await sessionStore.getPaths(sessionId);
     return paths.log;
   } catch {
     return null;
@@ -424,7 +413,7 @@ async function askOracleFlow(version: string, userConfig: UserConfig): Promise<v
     return;
   }
   const promptWithSuffix = userConfig.promptSuffix ? `${prompt.trim()}\n${userConfig.promptSuffix}` : prompt;
-  await ensureSessionStorage();
+  await sessionStore.ensureStorage();
   const runOptions: RunOracleOptions = {
     prompt: promptWithSuffix,
     model: answers.model,
@@ -466,7 +455,7 @@ async function askOracleFlow(version: string, userConfig: UserConfig): Promise<v
     config: userConfig.notify,
   });
 
-  const sessionMeta = await initializeSession(
+  const sessionMeta = await sessionStore.createSession(
     {
       ...runOptions,
       mode,
@@ -476,7 +465,7 @@ async function askOracleFlow(version: string, userConfig: UserConfig): Promise<v
     notifications,
   );
 
-  const { logLine, writeChunk, stream } = createSessionLogWriter(sessionMeta.id);
+  const { logLine, writeChunk, stream } = sessionStore.createLogWriter(sessionMeta.id);
   const combinedLog = (message?: string): void => {
     if (message) {
       console.log(message);
@@ -512,7 +501,8 @@ async function askOracleFlow(version: string, userConfig: UserConfig): Promise<v
   }
 }
 
-const readSessionMetadataSafe = (sessionId: string): Promise<SessionMetadata | null> => readSessionMetadata(sessionId);
+const readSessionMetadataSafe = (sessionId: string): Promise<SessionMetadata | null> =>
+  sessionStore.readSession(sessionId);
 
 async function resolvePromptInput(rawInput: string): Promise<string> {
   const trimmed = rawInput.trim();
@@ -533,11 +523,11 @@ async function resolvePromptInput(rawInput: string): Promise<string> {
 }
 
 async function readStoredPrompt(sessionId: string): Promise<string | null> {
-  const request = await readSessionRequest(sessionId);
+  const request = await sessionStore.readRequest(sessionId);
   if (request?.prompt && request.prompt.trim().length > 0) {
     return request.prompt;
   }
-  const meta = await readSessionMetadata(sessionId);
+  const meta = await sessionStore.readSession(sessionId);
   if (meta?.options?.prompt && meta.options.prompt.trim().length > 0) {
     return meta.options.prompt;
   }

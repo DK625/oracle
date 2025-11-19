@@ -12,18 +12,24 @@ import chalk from 'chalk';
 
 vi.useFakeTimers();
 
-vi.mock('../../src/sessionManager.ts', () => {
-  return {
-    readSessionMetadata: vi.fn(),
-    readSessionLog: vi.fn(),
-    readSessionRequest: vi.fn(),
-    wait: vi.fn(),
-    listSessionsMetadata: vi.fn(),
-    filterSessionsByRange: vi.fn(),
-    // biome-ignore lint/style/useNamingConvention: mimic exported constant name
-    SESSIONS_DIR: '/tmp/sessions',
-  };
-});
+const sessionStoreMock = {
+  readSession: vi.fn(),
+  readLog: vi.fn(),
+  readModelLog: vi.fn(),
+  readRequest: vi.fn(),
+  listSessions: vi.fn(),
+  filterSessions: vi.fn(),
+  getPaths: vi.fn(),
+  sessionsDir: vi.fn().mockReturnValue('/tmp/sessions'),
+};
+
+vi.mock('../../src/sessionStore.ts', () => ({
+  sessionStore: sessionStoreMock,
+}));
+
+vi.mock('../../src/sessionManager.ts', () => ({
+  wait: vi.fn(),
+}));
 
 vi.mock('../../src/cli/markdownRenderer.ts', () => {
   return {
@@ -34,10 +40,9 @@ vi.mock('../../src/cli/markdownRenderer.ts', () => {
 const sessionManagerMock = await import('../../src/sessionManager.ts');
 const markdownMock = await import('../../src/cli/markdownRenderer.ts');
 const renderMarkdownMock = markdownMock.renderMarkdownAnsi as unknown as { mockClear?: () => void };
-const readSessionMetadataMock = sessionManagerMock.readSessionMetadata as unknown as ReturnType<typeof vi.fn>;
-const readSessionLogMock = sessionManagerMock.readSessionLog as unknown as ReturnType<typeof vi.fn>;
-const readSessionRequestMock = sessionManagerMock.readSessionRequest as unknown as ReturnType<typeof vi.fn>;
-const _readSessionRequestMock = sessionManagerMock.readSessionRequest as unknown as ReturnType<typeof vi.fn>;
+const readSessionMetadataMock = sessionStoreMock.readSession as unknown as ReturnType<typeof vi.fn>;
+const readSessionLogMock = sessionStoreMock.readLog as unknown as ReturnType<typeof vi.fn>;
+const readSessionRequestMock = sessionStoreMock.readRequest as unknown as ReturnType<typeof vi.fn>;
 
 const originalIsTty = process.stdout.isTTY;
 const originalChalkLevel = chalk.level;
@@ -46,6 +51,12 @@ beforeEach(() => {
   Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
   chalk.level = 1;
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  Object.values(sessionStoreMock).forEach((fn) => {
+    if (typeof fn === 'function' && 'mockReset' in fn) {
+      fn.mockReset();
+    }
+  });
+  sessionStoreMock.sessionsDir.mockReturnValue('/tmp/sessions');
 });
 
 afterEach(() => {

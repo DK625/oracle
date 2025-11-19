@@ -17,22 +17,30 @@ vi.mock('../../src/cli/notifier.ts', () => ({
   deriveNotificationSettingsFromMetadata: vi.fn(() => ({ enabled: true, sound: false })),
 }));
 
-vi.mock('../../src/sessionManager.ts', async () => {
-  const actual = await vi.importActual<typeof import('../../src/sessionManager.ts')>(
-    '../../src/sessionManager.ts',
-  );
-  return {
-    ...actual,
-    updateSessionMetadata: vi.fn(),
-  };
-});
+const sessionStoreMock = {
+  updateSession: vi.fn(),
+  createLogWriter: vi.fn(),
+  updateModelRun: vi.fn(),
+  readLog: vi.fn(),
+  readSession: vi.fn(),
+  readRequest: vi.fn(),
+  ensureStorage: vi.fn(),
+  listSessions: vi.fn(),
+  filterSessions: vi.fn(),
+  getPaths: vi.fn(),
+  readModelLog: vi.fn(),
+  sessionsDir: vi.fn().mockReturnValue('/tmp/.oracle/sessions'),
+};
+
+vi.mock('../../src/sessionStore.ts', () => ({
+  sessionStore: sessionStoreMock,
+}));
 
 import type { SessionMetadata } from '../../src/sessionManager.ts';
 import { performSessionRun } from '../../src/cli/sessionRunner.ts';
 import { BrowserAutomationError, FileValidationError, OracleResponseError, OracleTransportError, runOracle } from '../../src/oracle.ts';
 import type { OracleResponse, RunOracleResult } from '../../src/oracle.ts';
 import { runBrowserSessionExecution } from '../../src/browser/sessionRunner.ts';
-import { updateSessionMetadata } from '../../src/sessionManager.ts';
 import { sendSessionNotification } from '../../src/cli/notifier.ts';
 import { getCliVersion } from '../../src/version.ts';
 
@@ -64,6 +72,16 @@ afterAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.values(sessionStoreMock).forEach((fn) => {
+    if (typeof fn === 'function' && 'mockReset' in fn) {
+      fn.mockReset();
+    }
+  });
+  sessionStoreMock.createLogWriter.mockReturnValue({
+    logLine: vi.fn(),
+    writeChunk: vi.fn(),
+    stream: { end: vi.fn() },
+  });
 });
 
 describe('performSessionRun', () => {
@@ -86,9 +104,9 @@ describe('performSessionRun', () => {
       version: cliVersion,
     });
 
-    expect(vi.mocked(updateSessionMetadata)).toHaveBeenCalledTimes(2);
+    expect(sessionStoreMock.updateSession).toHaveBeenCalledTimes(2);
     expect(vi.mocked(runOracle)).toHaveBeenCalled();
-    const finalUpdate = vi.mocked(updateSessionMetadata).mock.calls.at(-1)?.[1];
+    const finalUpdate = sessionStoreMock.updateSession.mock.calls.at(-1)?.[1];
     expect(finalUpdate).toMatchObject({
       status: 'completed',
       usage: { totalTokens: 30 },
@@ -118,7 +136,7 @@ describe('performSessionRun', () => {
 
     expect(vi.mocked(runBrowserSessionExecution)).toHaveBeenCalled();
     expect(vi.mocked(sendSessionNotification)).toHaveBeenCalled();
-    const finalUpdate = vi.mocked(updateSessionMetadata).mock.calls.at(-1)?.[1];
+    const finalUpdate = sessionStoreMock.updateSession.mock.calls.at(-1)?.[1];
     expect(finalUpdate).toMatchObject({
       status: 'completed',
       browser: expect.objectContaining({ runtime: expect.objectContaining({ chromePid: 123 }) }),
@@ -142,7 +160,7 @@ describe('performSessionRun', () => {
       }),
     ).rejects.toThrow('automation failed');
 
-    const finalUpdate = vi.mocked(updateSessionMetadata).mock.calls.at(-1)?.[1];
+    const finalUpdate = sessionStoreMock.updateSession.mock.calls.at(-1)?.[1];
     expect(finalUpdate).toMatchObject({
       status: 'error',
       errorMessage: 'automation failed',
@@ -166,7 +184,7 @@ describe('performSessionRun', () => {
       }),
     ).rejects.toThrow('boom');
 
-    const finalUpdate = vi.mocked(updateSessionMetadata).mock.calls.at(-1)?.[1];
+    const finalUpdate = sessionStoreMock.updateSession.mock.calls.at(-1)?.[1];
     expect(finalUpdate).toMatchObject({
       status: 'error',
       response: expect.objectContaining({ responseId: 'resp-error' }),
@@ -188,7 +206,7 @@ describe('performSessionRun', () => {
       }),
     ).rejects.toThrow('timeout');
 
-    const finalUpdate = vi.mocked(updateSessionMetadata).mock.calls.at(-1)?.[1];
+    const finalUpdate = sessionStoreMock.updateSession.mock.calls.at(-1)?.[1];
     expect(finalUpdate).toMatchObject({
       status: 'error',
       transport: { reason: 'client-timeout' },
@@ -211,7 +229,7 @@ describe('performSessionRun', () => {
       }),
     ).rejects.toThrow('too large');
 
-    const finalUpdate = vi.mocked(updateSessionMetadata).mock.calls.at(-1)?.[1];
+    const finalUpdate = sessionStoreMock.updateSession.mock.calls.at(-1)?.[1];
     expect(finalUpdate).toMatchObject({
       status: 'error',
       error: expect.objectContaining({ category: 'file-validation', message: 'too large' }),

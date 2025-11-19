@@ -3,17 +3,12 @@ import { z } from 'zod';
 import { getCliVersion } from '../../version.js';
 import { LoggingMessageNotificationParamsSchema } from '@modelcontextprotocol/sdk/types.js';
 import { ensureBrowserAvailable, mapConsultToRunOptions } from '../utils.js';
-import {
-  createSessionLogWriter,
-  initializeSession,
-  readSessionMetadata,
-  readSessionLog,
-  type BrowserSessionConfig,
-} from '../../sessionManager.js';
+import type { BrowserSessionConfig } from '../../sessionManager.js';
+import { sessionStore } from '../../sessionStore.js';
 
 async function readSessionLogTail(sessionId: string, maxBytes: number): Promise<string | null> {
   try {
-    const log = await readSessionLog(sessionId);
+    const log = await sessionStore.readLog(sessionId);
     if (log.length <= maxBytes) {
       return log;
     }
@@ -106,7 +101,7 @@ export function registerConsultTool(server: McpServer): void {
         config: userConfig.notify,
       });
 
-      const sessionMeta = await initializeSession(
+      const sessionMeta = await sessionStore.createSession(
         {
           ...runOptions,
           mode: resolvedEngine,
@@ -117,7 +112,7 @@ export function registerConsultTool(server: McpServer): void {
         notifications,
       );
 
-      const logWriter = createSessionLogWriter(sessionMeta.id);
+      const logWriter = sessionStore.createLogWriter(sessionMeta.id);
       // Best-effort: emit MCP logging notifications for live chunks but never block the run.
       const sendLog = (text: string, level: 'info' | 'debug' = 'info') =>
         server.server
@@ -165,7 +160,7 @@ export function registerConsultTool(server: McpServer): void {
       }
 
       try {
-        const finalMeta = (await readSessionMetadata(sessionMeta.id)) ?? sessionMeta;
+        const finalMeta = (await sessionStore.readSession(sessionMeta.id)) ?? sessionMeta;
         const summary = `Session ${sessionMeta.id} (${finalMeta.status})`;
         const logTail = await readSessionLogTail(sessionMeta.id, 4000);
         return {

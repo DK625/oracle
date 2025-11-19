@@ -1,7 +1,7 @@
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import fs from 'node:fs/promises';
-import { getSessionPaths, readSessionLog, readSessionMetadata } from '../../sessionManager.js';
+import { sessionStore } from '../../sessionStore.js';
 
 // URIs:
 // - oracle-session://<id>/metadata
@@ -27,10 +27,9 @@ export function registerSessionResources(server: McpServer): void {
       if (!id || !kind) {
         throw new Error('Missing id or kind');
       }
-      const paths = await getSessionPaths(id);
       switch (kind) {
         case 'metadata': {
-          const metadata = await readSessionMetadata(id);
+          const metadata = await sessionStore.readSession(id);
           if (!metadata) {
             throw new Error(`Session "${id}" not found.`);
           }
@@ -44,7 +43,7 @@ export function registerSessionResources(server: McpServer): void {
           };
         }
         case 'log': {
-          const log = await readSessionLog(id);
+          const log = await sessionStore.readLog(id);
           return {
             contents: [
               {
@@ -55,6 +54,18 @@ export function registerSessionResources(server: McpServer): void {
           };
         }
         case 'request': {
+          const request = await sessionStore.readRequest(id);
+          if (request) {
+            return {
+              contents: [
+                {
+                  uri: uri.href,
+                  text: JSON.stringify(request, null, 2),
+                },
+              ],
+            };
+          }
+          const paths = await sessionStore.getPaths(id);
           const raw = await fs.readFile(paths.request, 'utf8');
           return {
             contents: [
