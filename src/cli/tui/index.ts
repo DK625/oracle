@@ -45,24 +45,28 @@ export async function launchTui({ version }: LaunchTuiOptions): Promise<void> {
   let showingOlder = false;
   for (;;) {
     const { recent, older, olderTotal } = await fetchSessionBuckets(olderOffset);
-    const choices: Array<SessionChoice | inquirer.Separator> = [];
+    type HeaderChoice = { name: string; value: string; disabled: boolean };
+    const choices: Array<SessionChoice | inquirer.Separator | HeaderChoice> = [];
     const hasOlderPrev = olderOffset > 0;
     const hasOlderNext = olderOffset + PAGE_SIZE < olderTotal;
 
+    const headerLabel = dim('Status  Model         Mode    Timestamp           Chars  Cost  Slug');
+
+    // Start with a selectable row so PageUp/PageDown never land on a separator
+    choices.push({ name: chalk.bold.green('ask oracle'), value: '__ask__' });
+    choices.push(new inquirer.Separator());
+
     if (!showingOlder) {
       if (recent.length > 0) {
-        choices.push(new inquirer.Separator());
-        choices.push(new inquirer.Separator('Status  Model         Mode    Timestamp           Chars  Cost  Slug'));
+        choices.push({ name: headerLabel, value: '__hdr__', disabled: true });
         choices.push(...recent.map(toSessionChoice));
       } else if (older.length > 0) {
         // No recent entries; show first page of older.
-        choices.push(new inquirer.Separator());
-        choices.push(new inquirer.Separator('Status  Model         Mode    Timestamp           Chars  Cost  Slug'));
+        choices.push({ name: headerLabel, value: '__hdr__', disabled: true });
         choices.push(...older.slice(0, PAGE_SIZE).map(toSessionChoice));
       }
     } else if (older.length > 0) {
-      choices.push(new inquirer.Separator());
-      choices.push(new inquirer.Separator('Status  Model         Mode    Timestamp           Chars  Cost  Slug'));
+      choices.push({ name: headerLabel, value: '__hdr__', disabled: true });
       choices.push(...older.map(toSessionChoice));
     }
 
@@ -71,7 +75,7 @@ export async function launchTui({ version }: LaunchTuiOptions): Promise<void> {
     choices.push({ name: chalk.bold.green('ask oracle'), value: '__ask__' });
 
     if (!showingOlder && olderTotal > 0) {
-      choices.push({ name: 'Load older', value: '__older__' });
+      choices.push({ name: 'Older page', value: '__older__' });
     } else {
       if (hasOlderPrev) {
         choices.push({ name: 'Page up', value: '__prev__' });
@@ -79,7 +83,7 @@ export async function launchTui({ version }: LaunchTuiOptions): Promise<void> {
       if (hasOlderNext) {
         choices.push({ name: 'Page down', value: '__more__' });
       }
-      choices.push({ name: 'Back to recent', value: '__reset__' });
+      choices.push({ name: 'Newer (recent)', value: '__reset__' });
     }
 
     choices.push({ name: 'Exit', value: '__exit__' });
