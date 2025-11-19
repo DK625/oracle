@@ -8,12 +8,20 @@ All notable changes to this project will be documented in this file.
 - Native Azure OpenAI support! Set `AZURE_OPENAI_ENDPOINT` (plus `AZURE_OPENAI_API_KEY` and optionally `AZURE_OPENAI_DEPLOYMENT`/`AZURE_OPENAI_API_VERSION`) or use the new CLI flags (`--azure-endpoint`, `--azure-deployment`, etc.) to switch automatically to the Azure client.
 - **Gemini 3 Pro Support**: Use Google's latest model via `oracle --model gemini`. Requires `GEMINI_API_KEY`.
 - Configurable API timeout: `--timeout <seconds|auto>` (default auto = 20m for gpt-5-pro, 30s for other models). Enforced for streaming and background runs.
+- OpenAI-compatible base URL override: `--base-url` (or `apiBaseUrl` in config / `OPENAI_BASE_URL`) lets you target LiteLLM proxies, Azure gateways, and other compatible hosts.
 - Help text tip: best results come from 6–30 sentences plus key source files; very short prompts tend to be generic.
-- Browser inline cookies: `--browser-inline-cookies[(-file)]` (or env) accepts JSON/base64 payloads, auto-loads `~/.oracle/cookies.{json,base64}`, and dry-run now reports whether cookies come from Chrome or inline sources.
+- Browser inline cookies: `--browser-inline-cookies[(-file)]` (or env) accepts JSON/base64 payloads, auto-loads `~/.oracle/cookies.{json,base64}`, adds a cookie allowlist (`--browser-cookie-names`), and dry-run now reports whether cookies come from Chrome or inline sources.
 - Inline runs now print a single completion line (removed duplicate “Finished” summary), keeping output concise.
 - Gemini runs stay on API (no browser detours), and the CLI logs the resolved model id alongside masked keys when it differs.
 - `--dry-run [summary|json|full]` is now the single preview flag; `--preview` remains as a hidden alias for compatibility.
-- `--show-model-id` prints the resolved id for all models (Gemini/GPT).
+
+### Changed
+- Browser engine is now macOS-only; Windows and Linux runs fail fast with guidance to re-run via `--engine api`.
+- Browser fallback tips focus on `--browser-bundle-files`, making it clear users can drag the single bundled file into ChatGPT when automation fails.
+- Removed README reference to the unsupported `--show-model-id` flag to avoid CLI errors.
+- Sessions TUI separates recent vs older runs, adds an Older/Newer action, keeps headers aligned with rows, and avoids separator crashes while preserving an always-selectable “ask oracle” entry.
+- CLI output is tidier and more resilient: graceful Ctrl+C, shorter headers/footers, clearer verbose token labels, and reduced trailing spacing.
+- File discovery is more reliable on Windows thanks to normalized paths, native-fs glob handling, and `.gitignore` respect across platforms.
 
 ## 1.2.0 — 2025-11-18
 
