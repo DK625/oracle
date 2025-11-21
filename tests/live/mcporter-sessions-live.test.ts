@@ -14,7 +14,7 @@ async function ensureBuilt(): Promise<void> {
   await stat(ORACLE_MCP_BIN);
 }
 
-type McporterOutput = { result?: unknown; error?: unknown; sessionId?: string };
+type McporterOutput = { result?: unknown; error?: unknown; sessionId?: string; text?: string };
 
 async function runMcporter(args: string[]): Promise<McporterOutput> {
   try {
@@ -23,13 +23,35 @@ async function runMcporter(args: string[]): Promise<McporterOutput> {
       timeout: 180_000,
     });
     try {
-      return JSON.parse(stdout) as McporterOutput;
+      const parsed = JSON.parse(stdout) as McporterOutput;
+      return { ...parsed, text: stdout };
     } catch {
-      return { result: stdout };
+      return { result: stdout, text: stdout };
     }
   } catch (error) {
     return { error };
   }
+}
+
+function extractSessionId(output: McporterOutput): string | null {
+  if (typeof output.sessionId === 'string' && output.sessionId.length > 0) {
+    return output.sessionId;
+  }
+  const result = output.result;
+  if (result && typeof result === 'object' && 'sessionId' in result) {
+    const sessionIdValue = (result as { sessionId?: unknown }).sessionId;
+    if (typeof sessionIdValue === 'string') {
+      return sessionIdValue;
+    }
+  }
+  const text = typeof output.text === 'string' ? output.text : typeof output.result === 'string' ? output.result : '';
+  // Matches "Session abc-def (completed)" or any bare slug looking token
+  const regex = /Session\s+([a-z0-9-]{3,})\b/i;
+  const match = regex.exec(text);
+  if (match?.[1]) {
+    return match[1];
+  }
+  return null;
 }
 
 (LIVE && hasOpenAI ? describe : describe.skip)('mcporter sessions live', () => {
@@ -37,12 +59,14 @@ async function runMcporter(args: string[]): Promise<McporterOutput> {
     'creates a session via consult then fetches it via sessions tool',
     async () => {
       await ensureBuilt();
+      const slug = `mcporter session smoke live ${Date.now().toString(36)}`;
       const consult = await runMcporter([
         'call',
         'oracle-local.consult',
         'prompt:mcporter session smoke',
         'model:gpt-5.1',
         'engine:api',
+        `slug:${slug}`,
         '--config',
         MCP_CONFIG,
       ]);
@@ -59,11 +83,27 @@ async function runMcporter(args: string[]): Promise<McporterOutput> {
         | string
         | undefined;
       const sessionId =
+        extractSessionId(consult) ||
         (consultResult && typeof consultResult === 'object' ? consultResult.sessionId : undefined) ||
         (consultResult && typeof consultResult === 'string' ? consultResult : undefined) ||
         consult.sessionId ||
         null;
       expect(sessionId).toBeTruthy();
+
+      const summary = await runMcporter([
+        'call',
+        'oracle-local.sessions',
+        `id:${sessionId}`,
+        '--config',
+        MCP_CONFIG,
+      ]);
+      expect(summary).not.toHaveProperty('error');
+      const summaryText =
+        typeof summary.result === 'string'
+          ? summary.result
+          : summary.text ?? JSON.stringify(summary.result ?? summary);
+      expect(summaryText).toContain(String(sessionId));
+      expect(summaryText.toLowerCase()).toContain('completed');
 
       const detail = await runMcporter([
         'call',
@@ -76,9 +116,8 @@ async function runMcporter(args: string[]): Promise<McporterOutput> {
       expect(detail).not.toHaveProperty('error');
       const detailBody = detail as { result?: unknown };
       const body = detailBody.result ?? detail;
-      const text = JSON.stringify(body);
-      expect(text).toContain(String(sessionId));
-      expect(text.toLowerCase()).toContain('completed');
+      const text = typeof body === 'string' ? body : JSON.stringify(body);
+      expect(text.length).toBeGreaterThan(0);
     },
     180_000,
   );
