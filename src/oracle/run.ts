@@ -37,8 +37,8 @@ import { renderMarkdownAnsi } from '../cli/markdownRenderer.js';
 import { executeBackgroundResponse } from './background.js';
 import { formatTokenEstimate, formatTokenValue, resolvePreviewMode } from './runUtils.js';
 
-const isTty = process.stdout.isTTY && chalk.level > 0;
-const dim = (text: string): string => (isTty ? kleur.dim(text) : text);
+const isStdoutTty = process.stdout.isTTY && chalk.level > 0;
+const dim = (text: string): string => (isStdoutTty ? kleur.dim(text) : text);
 // Default timeout for non-pro API runs (fast models) — give them up to 120s.
 const DEFAULT_TIMEOUT_NON_PRO_MS = 120_000;
 const DEFAULT_TIMEOUT_PRO_MS = 60 * 60 * 1000;
@@ -55,12 +55,17 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
     fs: fsModule = createFsAdapter(fs),
     log = console.log,
     write: sinkWrite = (_text: string) => true,
+    allowStdout = true,
+    stdoutWrite: stdoutWriteDep,
     now = () => performance.now(),
     clientFactory = createDefaultClientFactory(),
     client,
     wait = defaultWait,
   } = deps;
-  const stdoutWrite = process.stdout.write.bind(process.stdout);
+  const stdoutWrite = allowStdout
+    ? stdoutWriteDep ?? process.stdout.write.bind(process.stdout)
+    : () => true;
+  const isTty = allowStdout && isStdoutTty;
   const baseUrl = options.baseUrl?.trim() || process.env.OPENAI_BASE_URL?.trim();
 
   const logVerbose = (message: string): void => {
@@ -163,7 +168,7 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
   const systemPrompt = options.system?.trim() || DEFAULT_SYSTEM_PROMPT;
   const promptWithFiles = buildPrompt(options.prompt, files, cwd);
   const fileCount = files.length;
-  const richTty = process.stdout.isTTY && chalk.level > 0;
+  const richTty = allowStdout && process.stdout.isTTY && chalk.level > 0;
   const renderPlain = Boolean(options.renderPlain);
   const timeoutSeconds =
     options.timeoutSeconds === undefined || options.timeoutSeconds === 'auto'

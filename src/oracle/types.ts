@@ -165,6 +165,8 @@ export interface RunOracleDeps {
   fs?: MinimalFsModule;
   log?: (message: string) => void;
   write?: (chunk: string) => boolean;
+  allowStdout?: boolean;
+  stdoutWrite?: (text: string) => boolean;
   now?: () => number;
   clientFactory?: ClientFactory;
   client?: ClientLike;

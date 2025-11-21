@@ -47,6 +47,7 @@ export interface SessionRunParams {
   version: string;
   notifications?: NotificationSettings;
   browserDeps?: BrowserSessionRunnerDeps;
+  muteStdout?: boolean;
 }
 
 export async function performSessionRun({
@@ -60,11 +61,12 @@ export async function performSessionRun({
   version,
   notifications,
   browserDeps,
+  muteStdout = false,
 }: SessionRunParams): Promise<void> {
   const writeInline = (chunk: string): boolean => {
     // Keep session logs intact while still echoing inline output to the user.
     write(chunk);
-    return process.stdout.write(chunk);
+    return muteStdout ? true : process.stdout.write(chunk);
   };
   await sessionStore.updateSession(sessionMeta.id, {
     status: 'running',
@@ -176,7 +178,7 @@ export async function performSessionRun({
         }
       }
 
-      const shouldStreamInline = process.stdout.isTTY;
+      const shouldStreamInline = !muteStdout && process.stdout.isTTY;
       const shouldRenderMarkdown = shouldStreamInline && runOptions.renderPlain !== true;
       const printedModels = new Set<string>();
       const answerFallbacks = new Map<string, string>();
@@ -220,7 +222,11 @@ export async function performSessionRun({
               }
             : undefined,
         },
-        undefined,
+        {
+          runOracleImpl: muteStdout
+            ? (opts, deps) => runOracle(opts, { ...deps, allowStdout: false })
+            : undefined,
+        },
       );
 
       if (!shouldStreamInline) {
@@ -328,6 +334,7 @@ export async function performSessionRun({
       cwd,
       log,
       write,
+      allowStdout: !muteStdout,
     });
     if (result.mode !== 'live') {
       throw new Error('Unexpected preview result while running a session.');

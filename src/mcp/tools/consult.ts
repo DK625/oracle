@@ -212,6 +212,7 @@ export function registerConsultTool(server: McpServer): void {
           write,
           version: getCliVersion(),
           notifications,
+          muteStdout: true,
         });
       } catch (error) {
         log(`Run failed: ${error instanceof Error ? error.message : String(error)}`);
