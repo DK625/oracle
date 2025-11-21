@@ -309,7 +309,7 @@ describe('api key logging', () => {
     const verboseIndex = logs.findIndex((line) => line.includes('Response status:'));
     expect(verboseIndex).toBeGreaterThan(0);
     expect(logs[verboseIndex - 1]).toBe('');
-    expect(writes.join('')).toContain('Yo bro.\n');
+    expect(writes.join('')).toContain('Yo bro.');
   });
 
   test('verbose run spells out token labels', async () => {

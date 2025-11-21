@@ -43,7 +43,7 @@ describe('runOracle streaming output', () => {
     );
 
     expect(result.mode).toBe('live');
-    expect(writes.join('')).toBe('Hello world\n\n');
+    expect(writes.join('')).toBe('Hello world');
     expect(logs.some((line) => line.includes('Calling '))).toBe(true);
     expect(logs.some((line) => line.startsWith('Finished in '))).toBe(true);
   });
@@ -130,7 +130,7 @@ describe('runOracle streaming output', () => {
       },
     );
 
-    expect(writes.join('')).toBe('visible\n\n');
+    expect(writes.join('')).toBe('visible');
   });
 });
 

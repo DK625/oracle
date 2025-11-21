@@ -173,7 +173,8 @@ describe('performSessionRun', () => {
     });
 
     const writeCalls = (fsPromises.writeFile as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    expect(writeCalls).toContainEqual(['/tmp/out.md', expect.stringContaining('Saved text\n'), 'utf8']);
+    const expectedPath = path.resolve('/tmp/out.md');
+    expect(writeCalls).toContainEqual([expectedPath, expect.stringContaining('Saved text\n'), 'utf8']);
     const logLines = log.mock.calls.map((c) => c[0]).join('\n');
     expect(logLines).toContain('Saved assistant output');
   });
@@ -362,11 +363,13 @@ describe('performSessionRun', () => {
     });
 
     const writeCalls = (fsPromises.writeFile as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    expect(writeCalls).toContainEqual(['/tmp/out.gpt-5.1-pro.md', expect.stringContaining('pro answer\n'), 'utf8']);
-    expect(writeCalls).toContainEqual(['/tmp/out.gemini-3-pro.md', expect.stringContaining('gemini answer\n'), 'utf8']);
+    const expectedProPath = path.resolve('/tmp/out.gpt-5.1-pro.md');
+    const expectedGeminiPath = path.resolve('/tmp/out.gemini-3-pro.md');
+    expect(writeCalls).toContainEqual([expectedProPath, expect.stringContaining('pro answer\n'), 'utf8']);
+    expect(writeCalls).toContainEqual([expectedGeminiPath, expect.stringContaining('gemini answer\n'), 'utf8']);
     const logLines = log.mock.calls.map((c) => c[0]).join('\n');
     expect(logLines).toContain('Saved outputs:');
-    expect(logLines).toContain('gpt-5.1-pro -> /tmp/out.gpt-5.1-pro.md');
+    expect(logLines).toContain(`gpt-5.1-pro -> ${expectedProPath}`);
   });
 
   test('prints one aggregate header and colored summary for multi-model runs', async () => {
@@ -684,7 +687,8 @@ describe('performSessionRun', () => {
     });
 
     const writeCalls = (fsPromises.writeFile as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    expect(writeCalls).toContainEqual(['/tmp/browser-out.md', expect.stringContaining('browser answer\n'), 'utf8']);
+    const expectedPath = path.resolve('/tmp/browser-out.md');
+    expect(writeCalls).toContainEqual([expectedPath, expect.stringContaining('browser answer\n'), 'utf8']);
   });
 
   test('write-output failures warn but keep session successful', async () => {
@@ -723,7 +727,7 @@ describe('performSessionRun', () => {
     const logLines = log.mock.calls.map((c) => c[0]).join('\n');
     expect(logLines).toContain('write-output fallback');
     const calls = (fsPromises.writeFile as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    expect(calls[0][0]).toBe('/tmp/out.md');
+    expect(calls[0][0]).toBe(path.resolve('/tmp/out.md'));
     expect(calls[1][0]).toMatch(/out\.fallback/);
   });
 
@@ -758,7 +762,8 @@ describe('performSessionRun', () => {
 
   test('deriveModelOutputPath appends model when base has no extension', () => {
     const result = deriveModelOutputPath('/tmp/out', 'gpt-5.1-pro');
-    expect(result).toBe('/tmp/out.gpt-5.1-pro');
+    const expected = path.join(path.dirname('/tmp/out'), 'out.gpt-5.1-pro');
+    expect(result).toBe(expected);
   });
 
   test('records metadata when browser automation fails', async () => {
