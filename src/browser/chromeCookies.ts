@@ -237,10 +237,8 @@ function looksLikePath(value: string): boolean {
 async function materializeCookieFile(sourcePath: string): Promise<string> {
   if (process.platform !== 'win32') return sourcePath;
   // Chrome can keep the Cookies DB locked; copy to a temp file so sqlite can open it reliably.
-  const tempPath = path.join(
-    os.tmpdir(),
-    `oracle-cookies-${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}.sqlite`,
-  );
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'oracle-cookies-'));
+  const tempPath = path.join(tempDir, 'Cookies');
   try {
     await fs.copyFile(sourcePath, tempPath);
     return tempPath;

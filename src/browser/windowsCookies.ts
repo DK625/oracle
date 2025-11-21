@@ -58,7 +58,7 @@ export async function loadWindowsCookies(dbPath: string, filterNames?: Set<strin
     throw new Error('loadWindowsCookies is only supported on Windows');
   }
   const localStatePath = await locateLocalState(dbPath);
-  const cookiesCopy = await copyLockedFile(dbPath, 'Cookies');
+  const cookiesCopy = await copyLockedFile(dbPath, 'Cookies'); // name the copy exactly "Cookies"
   const localStateCopy = await copyLockedFile(localStatePath, 'Local State');
   const aesKey = await extractWindowsAesKey(localStateCopy);
   const rows = await readChromeCookiesDb(cookiesCopy, filterNames);
