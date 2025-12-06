@@ -38,7 +38,7 @@ npx @steipete/oracle status --hours 72
 npx @steipete/oracle session <id> --render
 
 # TUI (interactive, only for humans)
-npx @steipete/oracle
+npx @steipete/oracle tui
 ```
 
 Engine auto-picks API when `OPENAI_API_KEY` is set, otherwise browser; browser is stable on macOS and works on Linux and Windows. On Linux pass `--browser-chrome-path/--browser-cookie-path` if detection fails; on Windows prefer `--browser-manual-login` or inline cookies if decryption is blocked.

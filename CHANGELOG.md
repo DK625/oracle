@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.3 — 2025-12-06
+
+### Changed
+- `oracle` with no arguments now prints the help/usage banner; launch the interactive UI explicitly via `oracle tui` (keeps `ORACLE_FORCE_TUI` for automation/tests). README updated to match.
+
+### Fixed
+- Prevented accidental TUI entry in scripts/automations that previously invoked `oracle` without arguments.
+
 ## 0.5.2 — 2025-12-06
 
 ### Changed

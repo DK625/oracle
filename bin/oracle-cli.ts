@@ -154,7 +154,6 @@ const CLI_ENTRYPOINT = fileURLToPath(import.meta.url);
 const rawCliArgs = process.argv.slice(2);
 const userCliArgs = rawCliArgs[0] === CLI_ENTRYPOINT ? rawCliArgs.slice(1) : rawCliArgs;
 const isTty = process.stdout.isTTY;
-const tuiEnabled = () => isTty && process.env.ORACLE_NO_TUI !== '1';
 
 const program = new Command();
 let introPrinted = false;
@@ -171,8 +170,8 @@ program.hook('preAction', (thisCommand) => {
   if (userCliArgs.some((arg) => arg === '--help' || arg === '-h')) {
     return;
   }
-  if (userCliArgs.length === 0 && tuiEnabled()) {
-    // Skip prompt enforcement; runRootCommand will launch the TUI.
+  if (userCliArgs.length === 0) {
+    // Let the root action handle zero-arg entry (help + hint to `oracle tui`).
     return;
   }
   const opts = thisCommand.optsWithGlobals() as CliOptions;
@@ -424,6 +423,14 @@ program
     });
   });
 
+program
+  .command('tui')
+  .description('Launch the interactive terminal UI for humans (no automation).')
+  .action(async () => {
+    await sessionStore.ensureStorage();
+    await launchTui({ version: VERSION, printIntro: false });
+  });
+
 const sessionCommand = program
   .command('session [id]')
   .description('Attach to a stored session or list recent sessions when no ID is provided.')
@@ -659,12 +666,8 @@ async function runRootCommand(options: CliOptions): Promise<void> {
   }
 
   if (userCliArgs.length === 0) {
-    if (tuiEnabled()) {
-      await launchTui({ version: VERSION, printIntro: false });
-      return;
-    }
-    console.log(chalk.yellow('No prompt or subcommand supplied. See `oracle --help` for usage.'));
-    program.help({ error: false });
+    console.log(chalk.yellow('No prompt or subcommand supplied. Run `oracle --help` or `oracle tui` for the TUI.'));
+    program.outputHelp();
     return;
   }
   const retentionHours = typeof options.retainHours === 'number' ? options.retainHours : undefined;
