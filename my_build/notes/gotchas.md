@@ -23,3 +23,7 @@ Never store bridge tokens, PATs, cookies, signed download URLs, raw logs, genera
 ## Sandbox capture gotcha
 
 A ChatGPT `sandbox:/mnt/data/...` link is only a candidate. Oracle must save the file on the Windows browser host first; only then can the bridge host register a descriptor and emit `artifact-ready`. When candidates exist but no file is saved, use the sanitized `chatgptFiles.ts` diagnostics instead of assuming a bridge transfer bug.
+
+## Bridge concurrency gotcha
+
+The bridge admission limit is not a replacement for `tabLeaseRegistry`. Keep the bridge active limit at or below the shared browser tab limit unless intentionally testing queueing; otherwise accepted remote runs can still wait inside the browser layer for a tab lease.

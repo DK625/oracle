@@ -71,6 +71,7 @@ Do not edit manually.
 ### features
 
 - `my_build/features/bridge-artifact-transfer.md`
+- `my_build/features/bridge-concurrent-runs.md`
 
 ### bugs
 
@@ -97,6 +98,7 @@ Do not edit manually.
 
 - `my_build/handoffs/agent-context.md`
 - `my_build/handoffs/human-context.md`
+- `my_build/handoffs/local-bridge-concurrency-rollout.md`
 - `my_build/handoffs/release-handoff.md`
 <!-- ACTIVE_FILES_END -->
 

@@ -5,6 +5,7 @@
 ### Added
 
 - Bridge/Browser: transfer ChatGPT-generated files from the browser host back to the client over a token-protected artifact endpoint, with capability discovery, safe filenames, byte counts, SHA-256 metadata, ZIP validation, and manual fallback guidance for mixed-version bridge deployments.
+- Bridge/Browser: allow a bridge host to run up to three remote ChatGPT browser runs concurrently by default, queue additional runs through a small bounded FIFO, and retain `409 busy` when the queue is full. `oracle bridge host`, `oracle serve`, `/health`, and `oracle bridge doctor` now expose the active/queued run admission contract while keeping browser tab leases as the lower-level authority.
 
 ### Fixed
 

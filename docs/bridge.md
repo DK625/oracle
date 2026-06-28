@@ -25,6 +25,29 @@ Operational notes:
 - The default bridge transfer size limit is 512 MiB. Larger files stay on the browser host and require manual copy.
 - Session inspection prints artifact path, size, SHA-256 prefix, validation status, and transfer status so agents can verify whether the returned path is local to the Linux client.
 
+## Bridge run concurrency
+
+Bridge hosts now use bounded run admission instead of the old single-flight `busy` guard. By default, one `oracle bridge host` / `oracle serve` process admits up to **3 active remote browser runs** and keeps up to **3 additional runs** in a FIFO queue. This mirrors the local Windows browser mode default: the bridge protects HTTP/stream resources, while the browser layer’s tab lease registry remains the lower-level authority for the shared ChatGPT profile and tab count.
+
+Contract for `POST /runs`:
+
+- Requests within the active limit start immediately and stream NDJSON as before.
+- Requests beyond the active limit wait in the bounded FIFO queue and receive a normal `200 application/x-ndjson` stream with a log line indicating the queued position.
+- Requests beyond active + queued capacity receive the backward-compatible `409 {"error":"busy"}` response with extra non-secret queue metadata. Existing clients still see this as a busy host.
+- Disconnecting a queued client removes that request from the queue. Disconnecting a running client closes its response stream; the host still releases the bridge slot and removes per-run temp attachment directories when browser cleanup completes.
+- `GET /runs/<runId>/artifacts/<artifactId>` bypasses run-slot admission and remains protected by the same bearer token. Artifact descriptors and transfer responses never expose Windows host paths, cookies, signed ChatGPT URLs, or bridge tokens.
+
+Tuning knobs:
+
+```powershell
+oracle bridge host --max-concurrent-runs 3 --max-queued-runs 3
+oracle serve --max-concurrent-runs 3 --max-queued-runs 3
+```
+
+Equivalent environment variables are `ORACLE_REMOTE_MAX_ACTIVE_RUNS` and `ORACLE_REMOTE_MAX_QUEUED_RUNS`. Set `--max-queued-runs 0` when you prefer the old immediate `409 busy` behavior once all active slots are occupied.
+
+`oracle bridge doctor` and the token-protected `/health` response report the configured active/queued limits and current active/queued counts when the host supports this contract. Older clients ignore these additional fields.
+
 ## 1) Windows: start the host service (recommended)
 
 Run this on the Windows machine that’s signed into ChatGPT:

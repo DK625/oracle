@@ -940,6 +940,16 @@ program
     "--manual-login-profile-dir <path>",
     "Chrome profile directory for manual login (default ~/.oracle/browser-profile).",
   )
+  .option(
+    "--max-concurrent-runs <n>",
+    "Maximum active remote browser runs (default 3; env ORACLE_REMOTE_MAX_ACTIVE_RUNS).",
+    parseIntOption,
+  )
+  .option(
+    "--max-queued-runs <n>",
+    "Maximum queued remote browser runs before returning 409 busy (default 3; env ORACLE_REMOTE_MAX_QUEUED_RUNS; 0 disables queueing).",
+    parseIntOption,
+  )
   .action(async (commandOptions) => {
     const { serveRemote } = await import("../src/remote/server.js");
     await serveRemote({
@@ -948,6 +958,8 @@ program
       token: commandOptions.token,
       manualLoginDefault: commandOptions.manualLogin,
       manualLoginProfileDir: commandOptions.manualLoginProfileDir,
+      maxConcurrentRuns: commandOptions.maxConcurrentRuns,
+      maxQueuedRuns: commandOptions.maxQueuedRuns,
     });
   });
 
@@ -1043,6 +1055,16 @@ bridgeCommand
   .option("--ssh-extra-args <args>", "Extra args passed to ssh (quoted string).")
   .option("--background", "Run the host in the background and write pid/log files.", false)
   .option("--foreground", "Run the host in the foreground (default).", false)
+  .option(
+    "--max-concurrent-runs <n>",
+    "Maximum active remote browser runs (default 3; env ORACLE_REMOTE_MAX_ACTIVE_RUNS).",
+    parseIntOption,
+  )
+  .option(
+    "--max-queued-runs <n>",
+    "Maximum queued remote browser runs before returning 409 busy (default 3; env ORACLE_REMOTE_MAX_QUEUED_RUNS; 0 disables queueing).",
+    parseIntOption,
+  )
   .option("--print", "Print the client connection string (includes token).", false)
   .option("--print-token", "Print only the token.", false)
   .action(async (commandOptions) => {

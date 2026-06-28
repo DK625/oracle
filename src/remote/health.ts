@@ -1,7 +1,7 @@
 import http from "node:http";
 import net from "node:net";
 import { parseHostPort } from "../bridge/connection.js";
-import type { RemoteArtifactCapabilities } from "./types.js";
+import type { RemoteArtifactCapabilities, RemoteRunAdmissionState } from "./types.js";
 
 export interface RemoteHealthResult {
   ok: boolean;
@@ -10,6 +10,7 @@ export interface RemoteHealthResult {
   version?: string;
   uptimeSeconds?: number;
   capabilities?: RemoteArtifactCapabilities;
+  runAdmission?: RemoteRunAdmissionState;
 }
 
 export async function checkTcpConnection(
@@ -73,12 +74,16 @@ export async function checkRemoteHealth({
       const capabilities = parseCapabilities(
         (response.json as { capabilities?: unknown }).capabilities,
       );
+      const runAdmission = parseRunAdmission(
+        (response.json as { runAdmission?: unknown }).runAdmission,
+      );
       return {
         ok,
         statusCode: response.statusCode,
         version: typeof version === "string" ? version : undefined,
         uptimeSeconds: typeof uptimeSeconds === "number" ? uptimeSeconds : undefined,
         capabilities,
+        runAdmission,
       };
     }
     if (response.statusCode === 404) {
@@ -104,6 +109,8 @@ function parseCapabilities(value: unknown): RemoteArtifactCapabilities | undefin
     artifactTransfer?: unknown;
     artifactProtocolVersion?: unknown;
     maxArtifactBytes?: unknown;
+    maxActiveRemoteRuns?: unknown;
+    maxQueuedRemoteRuns?: unknown;
   };
   if (raw.artifactTransfer !== true) {
     return undefined;
@@ -111,7 +118,43 @@ function parseCapabilities(value: unknown): RemoteArtifactCapabilities | undefin
   const artifactProtocolVersion =
     typeof raw.artifactProtocolVersion === "number" ? raw.artifactProtocolVersion : 0;
   const maxArtifactBytes = typeof raw.maxArtifactBytes === "number" ? raw.maxArtifactBytes : 0;
-  return { artifactTransfer: true, artifactProtocolVersion, maxArtifactBytes };
+  const maxActiveRemoteRuns =
+    typeof raw.maxActiveRemoteRuns === "number" ? raw.maxActiveRemoteRuns : undefined;
+  const maxQueuedRemoteRuns =
+    typeof raw.maxQueuedRemoteRuns === "number" ? raw.maxQueuedRemoteRuns : undefined;
+  return {
+    artifactTransfer: true,
+    artifactProtocolVersion,
+    maxArtifactBytes,
+    maxActiveRemoteRuns,
+    maxQueuedRemoteRuns,
+  };
+}
+
+function parseRunAdmission(value: unknown): RemoteRunAdmissionState | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const raw = value as {
+    maxActiveRuns?: unknown;
+    maxQueuedRuns?: unknown;
+    activeRuns?: unknown;
+    queuedRuns?: unknown;
+  };
+  if (
+    typeof raw.maxActiveRuns !== "number" ||
+    typeof raw.maxQueuedRuns !== "number" ||
+    typeof raw.activeRuns !== "number" ||
+    typeof raw.queuedRuns !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    maxActiveRuns: raw.maxActiveRuns,
+    maxQueuedRuns: raw.maxQueuedRuns,
+    activeRuns: raw.activeRuns,
+    queuedRuns: raw.queuedRuns,
+  };
 }
 
 function extractErrorMessage(json: unknown, bodyText: string): string | null {

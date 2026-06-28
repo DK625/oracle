@@ -25,6 +25,7 @@ active_files:
     - my_build/architecture/integrations.md
   features:
     - my_build/features/bridge-artifact-transfer.md
+    - my_build/features/bridge-concurrent-runs.md
   bugs:
     - my_build/bugs/2026-06-28-chatgpt-sandbox-artifact-capture-gap.md
   decisions:
@@ -39,6 +40,7 @@ active_files:
   handoffs:
     - my_build/handoffs/agent-context.md
     - my_build/handoffs/human-context.md
+    - my_build/handoffs/local-bridge-concurrency-rollout.md
     - my_build/handoffs/release-handoff.md
 
 task_routes:

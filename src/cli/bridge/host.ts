@@ -22,6 +22,8 @@ export interface BridgeHostCliOptions {
   sshExtraArgs?: string;
   background?: boolean;
   foreground?: boolean;
+  maxConcurrentRuns?: number;
+  maxQueuedRuns?: number;
   print?: boolean;
   printToken?: boolean;
 }
@@ -92,6 +94,8 @@ export async function runBridgeHost(options: BridgeHostCliOptions): Promise<void
       sshRemotePort,
       sshIdentity: options.sshIdentity?.trim(),
       sshExtraArgs: options.sshExtraArgs?.trim(),
+      maxConcurrentRuns: options.maxConcurrentRuns,
+      maxQueuedRuns: options.maxQueuedRuns,
     });
     return;
   }
@@ -136,6 +140,8 @@ export async function runBridgeHost(options: BridgeHostCliOptions): Promise<void
       port: bindPort,
       token,
       logger: filteredServeLogger,
+      maxConcurrentRuns: options.maxConcurrentRuns,
+      maxQueuedRuns: options.maxQueuedRuns,
     });
   } finally {
     tunnel?.stop();
@@ -299,6 +305,8 @@ async function spawnBridgeHostInBackground({
   sshRemotePort,
   sshIdentity,
   sshExtraArgs,
+  maxConcurrentRuns,
+  maxQueuedRuns,
 }: {
   bind: string;
   token: string;
@@ -307,6 +315,8 @@ async function spawnBridgeHostInBackground({
   sshRemotePort?: number;
   sshIdentity?: string;
   sshExtraArgs?: string;
+  maxConcurrentRuns?: number;
+  maxQueuedRuns?: number;
 }): Promise<void> {
   const oracleHome = getOracleHomeDir();
   await fs.mkdir(oracleHome, { recursive: true, mode: 0o700 });
@@ -343,6 +353,12 @@ async function spawnBridgeHostInBackground({
   }
   if (sshExtraArgs) {
     args.push("--ssh-extra-args", sshExtraArgs);
+  }
+  if (typeof maxConcurrentRuns === "number") {
+    args.push("--max-concurrent-runs", String(maxConcurrentRuns));
+  }
+  if (typeof maxQueuedRuns === "number") {
+    args.push("--max-queued-runs", String(maxQueuedRuns));
   }
 
   const child = spawn(process.execPath, args, { detached: true, stdio });

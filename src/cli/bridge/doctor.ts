@@ -95,6 +95,13 @@ export async function runBridgeDoctor(_options: BridgeDoctorCliOptions): Promise
           );
           lines.push(chalk.dim(`Artifact transfer: ${chalk.yellow("manual fallback")}`));
         }
+        if (health.runAdmission) {
+          lines.push(
+            chalk.dim(
+              `Remote run admission: ${chalk.green(`${health.runAdmission.maxActiveRuns} active`)} + ${health.runAdmission.maxQueuedRuns} queued (${health.runAdmission.activeRuns} active, ${health.runAdmission.queuedRuns} queued now)`,
+            ),
+          );
+        }
       } else {
         const detail = health.error ?? "unknown error";
         fail.push(`Remote auth failed: ${detail}`);

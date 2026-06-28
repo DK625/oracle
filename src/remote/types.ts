@@ -30,6 +30,16 @@ export interface RemoteArtifactCapabilities {
   artifactTransfer: boolean;
   artifactProtocolVersion: number;
   maxArtifactBytes: number;
+  /** Optional static bridge-side run admission limits advertised by newer hosts. */
+  maxActiveRemoteRuns?: number;
+  maxQueuedRemoteRuns?: number;
+}
+
+export interface RemoteRunAdmissionState {
+  maxActiveRuns: number;
+  maxQueuedRuns: number;
+  activeRuns: number;
+  queuedRuns: number;
 }
 
 export interface RemoteArtifactDescriptor {

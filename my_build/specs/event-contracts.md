@@ -2,6 +2,12 @@
 
 ## Remote run NDJSON
 
+### Queue log
+
+Producer: Windows remote server. Consumer: Linux remote client.
+
+Payload uses the existing `{ "type": "log", "message": string }` event. Newer hosts may emit a sanitized message when a remote run is queued and another when it acquires a bridge slot. Consumers must treat these as informational logs only; no client behavior should depend on exact wording.
+
 ### `artifact-ready`
 
 Producer: Windows remote server. Consumer: Linux remote client.
@@ -21,6 +27,7 @@ Sanitized browser result. The remote client waits for all observed artifact tran
 Artifact failure does not convert a successful text response into a failed run. A warning records manual fallback instructions; partial client files are removed.
 
 ## Add here
+
 - Event name.
 - Producer.
 - Consumer.

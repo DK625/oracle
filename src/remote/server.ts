@@ -15,6 +15,7 @@ import type {
   RemoteArtifactDescriptor,
   RemoteRunPayload,
   RemoteRunEvent,
+  RemoteRunAdmissionState,
 } from "./types.js";
 import { getCookies, type Cookie } from "@steipete/sweet-cookie";
 import { CHATGPT_URL } from "../browser/constants.js";
@@ -41,6 +42,8 @@ export interface RemoteServerOptions {
   logger?: (message: string) => void;
   manualLoginDefault?: boolean;
   manualLoginProfileDir?: string;
+  maxConcurrentRuns?: number;
+  maxQueuedRuns?: number;
 }
 
 interface RemoteServerDeps {
@@ -62,12 +65,159 @@ interface RegisteredRemoteArtifact {
 const ARTIFACT_PROTOCOL_VERSION = 1;
 const MAX_REMOTE_ARTIFACT_BYTES = 512 * 1024 * 1024;
 const REMOTE_ARTIFACT_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_REMOTE_MAX_ACTIVE_RUNS = 3;
+const DEFAULT_REMOTE_MAX_QUEUED_RUNS = 3;
 
 const ARTIFACT_CAPABILITIES: RemoteArtifactCapabilities = {
   artifactTransfer: true,
   artifactProtocolVersion: ARTIFACT_PROTOCOL_VERSION,
   maxArtifactBytes: MAX_REMOTE_ARTIFACT_BYTES,
 };
+
+interface RemoteRunSlot {
+  release(): void;
+}
+
+interface QueuedRemoteRun {
+  resolve: (slot: RemoteRunSlot) => void;
+  reject: (error: Error) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+}
+
+type RemoteRunAdmission =
+  | { status: "active"; slot: RemoteRunSlot; state: RemoteRunAdmissionState }
+  | {
+      status: "queued";
+      position: number;
+      slotPromise: Promise<RemoteRunSlot>;
+      state: RemoteRunAdmissionState;
+    }
+  | { status: "full"; state: RemoteRunAdmissionState };
+
+class RemoteRunAdmissionController {
+  private activeRuns = 0;
+  private readonly queue: QueuedRemoteRun[] = [];
+
+  constructor(
+    private readonly maxActiveRuns: number,
+    private readonly maxQueuedRuns: number,
+  ) {}
+
+  admit(signal?: AbortSignal): RemoteRunAdmission {
+    if (this.activeRuns < this.maxActiveRuns) {
+      this.activeRuns += 1;
+      return { status: "active", slot: this.createSlot(), state: this.state() };
+    }
+
+    if (this.queue.length >= this.maxQueuedRuns) {
+      return { status: "full", state: this.state() };
+    }
+
+    let resolveSlot!: (slot: RemoteRunSlot) => void;
+    let rejectSlot!: (error: Error) => void;
+    const slotPromise = new Promise<RemoteRunSlot>((resolve, reject) => {
+      resolveSlot = resolve;
+      rejectSlot = reject;
+    });
+    const entry: QueuedRemoteRun = { resolve: resolveSlot, reject: rejectSlot, signal };
+
+    const onAbort = () => {
+      const index = this.queue.indexOf(entry);
+      if (index !== -1) {
+        this.queue.splice(index, 1);
+      }
+      entry.reject(new Error("remote run cancelled before a bridge slot became available"));
+    };
+    entry.onAbort = onAbort;
+    if (signal?.aborted) {
+      onAbort();
+      return {
+        status: "queued",
+        position: this.queue.length + 1,
+        slotPromise,
+        state: this.state(),
+      };
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    this.queue.push(entry);
+    return {
+      status: "queued",
+      position: this.queue.length,
+      slotPromise,
+      state: this.state(),
+    };
+  }
+
+  state(): RemoteRunAdmissionState {
+    return {
+      maxActiveRuns: this.maxActiveRuns,
+      maxQueuedRuns: this.maxQueuedRuns,
+      activeRuns: this.activeRuns,
+      queuedRuns: this.queue.length,
+    };
+  }
+
+  private createSlot(): RemoteRunSlot {
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        this.activeRuns = Math.max(0, this.activeRuns - 1);
+        this.drainQueue();
+      },
+    };
+  }
+
+  private drainQueue(): void {
+    while (this.activeRuns < this.maxActiveRuns && this.queue.length > 0) {
+      const entry = this.queue.shift();
+      if (!entry) return;
+      if (entry.onAbort && entry.signal) {
+        entry.signal.removeEventListener("abort", entry.onAbort);
+      }
+      if (entry.signal?.aborted) {
+        entry.reject(new Error("remote run cancelled before a bridge slot became available"));
+        continue;
+      }
+      this.activeRuns += 1;
+      entry.resolve(this.createSlot());
+    }
+  }
+}
+
+function resolveRemoteRunAdmissionConfig(options: RemoteServerOptions): {
+  maxActiveRuns: number;
+  maxQueuedRuns: number;
+} {
+  return {
+    maxActiveRuns: normalizePositiveInteger(
+      options.maxConcurrentRuns ?? process.env.ORACLE_REMOTE_MAX_ACTIVE_RUNS,
+      DEFAULT_REMOTE_MAX_ACTIVE_RUNS,
+    ),
+    maxQueuedRuns: normalizeNonNegativeInteger(
+      options.maxQueuedRuns ?? process.env.ORACLE_REMOTE_MAX_QUEUED_RUNS,
+      DEFAULT_REMOTE_MAX_QUEUED_RUNS,
+    ),
+  };
+}
+
+function normalizePositiveInteger(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+}
+
+function normalizeNonNegativeInteger(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+}
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -98,8 +248,11 @@ export async function createRemoteServer(
   const color = process.stdout.isTTY
     ? (formatter: (msg: string) => string, msg: string) => formatter(msg)
     : (_formatter: (msg: string) => string, msg: string) => msg;
-  // Single-flight guard: remote Chrome can only host one run at a time, so we serialize requests.
-  let busy = false;
+  const runAdmissionConfig = resolveRemoteRunAdmissionConfig(options);
+  const runAdmission = new RemoteRunAdmissionController(
+    runAdmissionConfig.maxActiveRuns,
+    runAdmissionConfig.maxQueuedRuns,
+  );
   const artifactRegistry = new Map<string, RegisteredRemoteArtifact>();
 
   if (!process.listenerCount("unhandledRejection")) {
@@ -129,13 +282,19 @@ export async function createRemoteServer(
         res.end(JSON.stringify({ error: "unauthorized" }));
         return;
       }
+      const admissionState = runAdmission.state();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
           ok: true,
           version: getCliVersion(),
           uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
-          capabilities: ARTIFACT_CAPABILITIES,
+          capabilities: {
+            ...ARTIFACT_CAPABILITIES,
+            maxActiveRemoteRuns: admissionState.maxActiveRuns,
+            maxQueuedRemoteRuns: admissionState.maxQueuedRuns,
+          },
+          runAdmission: admissionState,
         }),
       );
       return;
@@ -172,20 +331,9 @@ export async function createRemoteServer(
       res.end(JSON.stringify({ error: "unauthorized" }));
       return;
     }
-    if (busy) {
-      if (verbose) {
-        logger(
-          `[serve] Busy: rejecting new run from ${formatSocket(req)} while another run is active`,
-        );
-      }
-      res.writeHead(409, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "busy" }));
-      return;
-    }
-    busy = true;
-    const runStartedAt = Date.now();
+    const requestReceivedAt = Date.now();
 
-    let payload: RemoteRunPayload | null = null;
+    let payload: RemoteRunPayload;
     try {
       const body = await readRequestBody(req);
       payload = JSON.parse(body) as RemoteRunPayload;
@@ -193,35 +341,98 @@ export async function createRemoteServer(
         payload.browserConfig.url = normalizeChatgptUrl(payload.browserConfig.url, CHATGPT_URL);
       }
     } catch {
-      busy = false;
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "invalid_request" }));
       return;
     }
 
-    res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-
     const runId = randomUUID();
-    logger(
-      `[serve] Accepted run ${runId} from ${formatSocket(req)} (prompt ${payload?.prompt?.length ?? 0} chars)`,
-    );
-    // Each run gets an isolated temp dir so attachments/logs don't collide.
-    const runDir = await mkdtemp(path.join(os.tmpdir(), `oracle-serve-${runId}-`));
-    const attachmentDir = path.join(runDir, "attachments");
-    await mkdir(attachmentDir, { recursive: true });
+    const clientAbort = new AbortController();
+    let responseClosedByServer = false;
+    const abortOnClientDisconnect = () => {
+      if (!responseClosedByServer) {
+        clientAbort.abort(new Error("client disconnected"));
+      }
+    };
+    res.once("close", abortOnClientDisconnect);
+
+    const admission = runAdmission.admit(clientAbort.signal);
+    if (admission.status === "full") {
+      if (verbose) {
+        logger(
+          `[serve] Busy: rejecting run ${runId} from ${formatSocket(req)}; active=${admission.state.activeRuns}/${admission.state.maxActiveRuns}, queued=${admission.state.queuedRuns}/${admission.state.maxQueuedRuns}`,
+        );
+      }
+      responseClosedByServer = true;
+      res.writeHead(409, {
+        "Content-Type": "application/json",
+        "Retry-After": "5",
+      });
+      res.end(
+        JSON.stringify({
+          error: "busy",
+          message: "remote run queue is full",
+          maxActiveRuns: admission.state.maxActiveRuns,
+          maxQueuedRuns: admission.state.maxQueuedRuns,
+          activeRuns: admission.state.activeRuns,
+          queuedRuns: admission.state.queuedRuns,
+        }),
+      );
+      res.off("close", abortOnClientDisconnect);
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "application/x-ndjson",
+      "Cache-Control": "no-store",
+    });
 
     const sendEvent = (event: RemoteRunEvent) => {
+      if (responseClosedByServer || res.destroyed || res.writableEnded) {
+        return;
+      }
       res.write(`${JSON.stringify(event)}\n`);
     };
 
-    const attachments: BrowserAttachment[] = [];
-    let fallbackSubmission:
-      | {
-          prompt: string;
-          attachments: BrowserAttachment[];
-        }
-      | undefined;
+    if (admission.status === "queued") {
+      logger(
+        `[serve] Queued run ${runId} from ${formatSocket(req)} at bridge position ${admission.position} (active=${admission.state.activeRuns}/${admission.state.maxActiveRuns})`,
+      );
+      sendEvent({
+        type: "log",
+        message: `[browser] Bridge run queued at position ${admission.position}; waiting for one of ${admission.state.maxActiveRuns} active slot(s).`,
+      });
+    }
+
+    let runSlot: RemoteRunSlot | null = null;
+    let runDir: string | null = null;
+    let activeStartedAt = Date.now();
     try {
+      runSlot = admission.status === "active" ? admission.slot : await admission.slotPromise;
+      activeStartedAt = Date.now();
+      const waitMs = activeStartedAt - requestReceivedAt;
+      if (admission.status === "queued") {
+        sendEvent({
+          type: "log",
+          message: `[browser] Bridge run slot acquired after ${waitMs}ms; starting browser automation.`,
+        });
+      }
+      logger(
+        `[serve] Accepted run ${runId} from ${formatSocket(req)} (prompt ${payload.prompt.length} chars, bridge wait ${waitMs}ms)`,
+      );
+
+      // Each run gets an isolated temp dir so attachments/logs don't collide.
+      runDir = await mkdtemp(path.join(os.tmpdir(), `oracle-serve-${runId}-`));
+      const attachmentDir = path.join(runDir, "attachments");
+      await mkdir(attachmentDir, { recursive: true });
+
+      const attachments: BrowserAttachment[] = [];
+      let fallbackSubmission:
+        | {
+            prompt: string;
+            attachments: BrowserAttachment[];
+          }
+        | undefined;
       const attachmentsPayload = Array.isArray(payload.attachments) ? payload.attachments : [];
       for (const [index, attachment] of attachmentsPayload.entries()) {
         const safeName = sanitizeName(attachment.fileName ?? `attachment-${index + 1}`);
@@ -317,7 +528,7 @@ export async function createRemoteServer(
       }
       sendEvent({ type: "result", result: sanitizeResult(result) });
       logger(
-        `[serve] Run ${runId} completed in ${Date.now() - runStartedAt}ms${
+        `[serve] Run ${runId} completed in ${Date.now() - activeStartedAt}ms${
           artifactDescriptors.length > 0
             ? `; ${artifactDescriptors.length} artifact(s) ready for bridge transfer`
             : ""
@@ -325,15 +536,23 @@ export async function createRemoteServer(
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      sendEvent({ type: "error", message });
-      logger(`[serve] Run ${runId} failed after ${Date.now() - runStartedAt}ms: ${message}`);
+      if (!clientAbort.signal.aborted || runSlot) {
+        sendEvent({ type: "error", message });
+      }
+      logger(`[serve] Run ${runId} failed after ${Date.now() - activeStartedAt}ms: ${message}`);
     } finally {
-      busy = false;
-      res.end();
-      try {
-        await rm(runDir, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup errors
+      runSlot?.release();
+      responseClosedByServer = true;
+      if (!res.destroyed && !res.writableEnded) {
+        res.end();
+      }
+      res.off("close", abortOnClientDisconnect);
+      if (runDir) {
+        try {
+          await rm(runDir, { recursive: true, force: true });
+        } catch {
+          // ignore cleanup errors
+        }
       }
     }
   });
