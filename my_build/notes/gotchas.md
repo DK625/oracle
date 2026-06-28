@@ -19,3 +19,7 @@ A visible `sandbox:/mnt/data/...` link proves only that ChatGPT created a file. 
 ## Security gotcha
 
 Never store bridge tokens, PATs, cookies, signed download URLs, raw logs, generated ZIPs, or session runtime directories in `my_build`.
+
+## Sandbox capture gotcha
+
+A ChatGPT `sandbox:/mnt/data/...` link is only a candidate. Oracle must save the file on the Windows browser host first; only then can the bridge host register a descriptor and emit `artifact-ready`. When candidates exist but no file is saved, use the sanitized `chatgptFiles.ts` diagnostics instead of assuming a bridge transfer bug.

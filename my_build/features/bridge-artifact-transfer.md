@@ -15,7 +15,9 @@ GPT Web fix flows can receive a validated cloud-readable ZIP path without manual
 ## Current behavior
 
 - Host advertises artifact protocol v1 through `/health`.
-- Current-run ChatGPT files are saved and validated on the host.
+- Current-run ChatGPT files are saved and validated on the host before any bridge transfer begins.
+- ChatGPT sandbox/file candidates are discovered from answer text plus latest assistant-turn anchors, file cards, and download controls.
+- Sandbox links first use in-page credentialed fetch when possible; failed candidates then use scoped browser download fallback after Chrome download behavior is configured.
 - Host emits redacted descriptors and serves bytes through a bearer-token-protected endpoint.
 - Client writes a partial file, verifies size/SHA-256/ZIP structure, atomically publishes it, and records client-local metadata.
 - Mixed versions retain text output and show manual fallback guidance.
@@ -45,6 +47,8 @@ GPT Web fix flows can receive a validated cloud-readable ZIP path without manual
 ## Debug notes
 
 Run `oracle bridge doctor`. `manual fallback` means the connected host does not advertise the patched capability; `bridge v1` means transfer is available.
+
+If a visible `sandbox:/mnt/data/*.zip` appears but no Linux artifact path is returned, inspect browser-host logs from `src/browser/chatgptFiles.ts`: candidate counts, sanitized filename/source kind, direct download strategy, HTTP status/content type/final URL kind/body kind, fallback control count/details, and the explicit warning that no local browser-host artifact was saved. Absence of `artifact-ready` usually means capture failed before the bridge transfer contract began.
 
 ## Related decisions
 

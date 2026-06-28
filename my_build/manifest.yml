@@ -25,6 +25,8 @@ active_files:
     - my_build/architecture/integrations.md
   features:
     - my_build/features/bridge-artifact-transfer.md
+  bugs:
+    - my_build/bugs/2026-06-28-chatgpt-sandbox-artifact-capture-gap.md
   decisions:
     - my_build/decisions/ADR-0002-bridge-artifact-transfer-protocol.md
   specs:
