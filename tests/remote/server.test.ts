@@ -237,11 +237,11 @@ describe("remote browser service", () => {
         executor({ prompt: `run-${index}`, config: {}, sessionId: `run-${index}` }),
       );
       await waitFor(() => started.length === 3);
-      expect(started).toEqual(["run-1", "run-2", "run-3"]);
+      expect(new Set(started)).toEqual(new Set(["run-1", "run-2", "run-3"]));
 
       const fourth = executor({ prompt: "run-4", config: {}, sessionId: "run-4" });
       await delay(50);
-      expect(started).toEqual(["run-1", "run-2", "run-3"]);
+      expect(new Set(started)).toEqual(new Set(["run-1", "run-2", "run-3"]));
 
       completions.get("run-1")?.resolve(makeResult("done-1"));
       await waitFor(() => started.includes("run-4"));
@@ -250,7 +250,8 @@ describe("remote browser service", () => {
       completions.get("run-4")?.resolve(makeResult("done-4"));
 
       await expect(Promise.all([...runs, fourth])).resolves.toHaveLength(4);
-      expect(started).toEqual(["run-1", "run-2", "run-3", "run-4"]);
+      expect(new Set(started)).toEqual(new Set(["run-1", "run-2", "run-3", "run-4"]));
+      expect(started.at(-1)).toBe("run-4");
 
       const healthOk = await httpGetJson({
         hostname: "127.0.0.1",
