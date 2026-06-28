@@ -1,5 +1,12 @@
 # AGENTS.MD
 
+Durable project memory:
+
+- Start at `my_build/INDEX.md`, then read only the files routed for the current task.
+- After a durable feature, bug fix, architecture decision, protocol change, or rollout lesson, update the matching file under `my_build/`.
+- Validate memory changes with `python3 my_build/scripts/run_all_checks.py`.
+- Do not store secrets, raw logs, generated archives, or runtime artifacts in `my_build`.
+
 Oracle-specific notes:
 
 - ChatGPT project URLs: steipete@gmail.com -> https://chatgpt.com/g/g-p-691edc9fec088191b553a35093da1ea8-oracle/project; studpete@gmail.com -> https://chatgpt.com/g/g-p-69505ed97e3081918a275477a647a682/project. Prefer studpete URL if steipete project not found.
