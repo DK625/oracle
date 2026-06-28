@@ -7,6 +7,8 @@ Read this file whenever you're working from Windows and add new findings so the 
 - agent-scripts bash helpers: `runner`/`scripts/committer` can fail under PowerShell/CMD because of CRLF and bash expectations. If they explode, run commands directly (`pnpm ...`, `git add/commit`) instead.
 - browser-tools binary: not built in `agent-scripts/bin` on Windows; `pnpm tsx scripts/browser-tools.ts` also fails there (no package manifest). Use a macOS-built binary or run from macOS if you need it.
 - Prefer PowerShell + pnpm directly; watch for CRLF warnings when touching tracked files.
+- `corepack enable` can fail from non-admin PowerShell with `EPERM` writing `C:\Program Files\nodejs\pnpx`. If `pnpm --version` is already available and matches the repo expectation, continue with `pnpm install --frozen-lockfile` instead of blocking on admin rights.
+- Bridge concurrency targeted tests can expose Windows/request-scheduling order differences: `tests/remote/server.test.ts` may start the first three parallel runs as `run-2, run-1, run-3`. Check whether active admission, queueing, and `/health.runAdmission` are correct before treating this as a bridge runtime failure.
 
 Future Windows gotchas belong here. Update this doc when you learn something new.
 
